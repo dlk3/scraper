@@ -27,6 +27,15 @@ const config = {
 			password: 'alphareign',
 			user: 'root',
 		},
+		// dlk added to debug connection exception
+		/*
+		pool: {
+			min: 1,
+			max: 20,
+			acquireTimeoutMillis: 60000
+		}
+		asyncStackTraces: true
+		*/
 	},
 	debug: false,
 	elasticsearch: {

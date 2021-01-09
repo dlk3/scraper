@@ -1,6 +1,6 @@
 const { Duplex } = require('stream');
 const crypto = require('crypto');
-const BitField = require('bitfield');
+const BitField = require('bitfield').default;
 const bencode = require('bencode');
 
 const BT_RESERVED = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x01]);

@@ -13,9 +13,16 @@ const getCount = async () => {
 		.count('infohash')
 		.whereNull('searchUpdated');
 
-	console.log(`Total Torrents: ${count['count(`infohash`)']}`);
-	console.log(`Torrents without Tracker: ${count2['count(`infohash`)']}`);
-	console.log(`Torrents not in Search: ${count3['count(`infohash`)']}`);
+	//  Print a timestamp with each count message - dlk
+	function PadZero(num) {
+		return (num >= 0 && num < 10) ? "0" + num : num + "";
+	}
+	var now = new Date()
+	var timestamp = [now.getFullYear(), PadZero(now.getMonth() + 1), PadZero(now.getDate())].join("-") + "T" + [PadZero(now.getHours()), PadZero(now.getMinutes()), PadZero(now.getSeconds())].join(':') + " "
+	
+	console.log(timestamp + `Total Torrents: ${count['count(`infohash`)']}`);
+	console.log(timestamp + `Torrents without Tracker: ${count2['count(`infohash`)']}`);
+	console.log(timestamp + `Torrents not in Search: ${count3['count(`infohash`)']}`);
 	setTimeout(() => getCount(), 10000);
 };
 
