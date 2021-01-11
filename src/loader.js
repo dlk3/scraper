@@ -1,6 +1,7 @@
 /* eslint-disable camelcase */
 const config = require('./../config');
 const elasticsearch = require('elasticsearch');
+const utils = require('./utils');
 
 const client = new elasticsearch.Client({ host: `${config.elasticsearch.host}:${config.elasticsearch.port}` });
 const knex = require('knex')(config.db);
@@ -80,8 +81,12 @@ const loader = async () => {
 		try {
 			await update(records);
 		} catch (error) {
-			console.log(error);
-			// Do nothing
+			if (error instanceof knexTimeoutError) {
+				console.log(utils.timeStamp() + 'knex database connection time out');
+			} else {
+				console.error(utils.timeStamp() + 'Unexpected error:');
+				console.error(error);
+			}
 		}
 	}
 

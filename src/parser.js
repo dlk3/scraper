@@ -14,8 +14,17 @@ const clean = (data) => {
 	return data;
 };
 
-const filterTorrent = (names) =>
-	names.filter((name) => config.filters.findIndex((element) => name.toLowerCase().includes(element)) > -1);
+// const filterTorrent = (names) =>
+//	names.filter((name) => config.filters.findIndex((element) => name.toLowerCase().includes(element)) > -1);
+const filterTorrent = (names) => {
+	return names.filter((name) => {
+		if (name) {
+			return config.filters.findIndex((element) => name.toLowerCase().includes(element)) > -1;
+		} else {
+			return true;
+		}
+	});
+}
 const getType = (names) => {
 	const weights = names.reduce(
 		(result, name) =>
