@@ -24,8 +24,8 @@ const config = {
 		connection: {
 			database: 'alphareign',
 			host: '127.0.0.1',
-			password: 'alphareign',
-			user: 'root',
+			password: '',
+			user: '',
 		},
 		// dlk added to debug connection exception
 		/*
@@ -46,7 +46,7 @@ const config = {
 	formats,
 	search: {
 		// Seconds between every bulk insert
-		frequency: 60,
+		frequency: 10,
 		// Amount of torrents to update in elasticsearch at once
 		limit: 1000,
 	},
@@ -55,12 +55,18 @@ const config = {
 		// Minutes before we should try and update a torrent again
 		age: 360,
 		// Seconds between every scrape
-		frequency: 1,
+		frequency: 10,
 		// coppersurfer has been offline for a while now
 		// host: 'udp://tracker.coppersurfer.tk:6969/announce',
+		// host: 'udp://s33d3r.duckdns.org:6969/announce',
 		host: 'udp://tracker.opentrackr.org:1337/announce',
 		limit: 75,
 	},
+	stale: {
+		// Delete outdated torrents after this many days 
+		days: 90,
+		limit: 100
+	}
 };
 
 module.exports = config;

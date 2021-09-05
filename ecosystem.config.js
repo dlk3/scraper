@@ -8,5 +8,9 @@ module.exports = {
 			name: 'loader',
 			script: 'loader.js',
 		},
+		{
+			name: 'cleaner',
+			script: 'cleaner.js',
+		},
 	],
 };

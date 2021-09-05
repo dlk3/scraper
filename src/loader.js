@@ -6,7 +6,7 @@ const utils = require('./utils');
 const client = new elasticsearch.Client({ host: `${config.elasticsearch.host}:${config.elasticsearch.port}` });
 const knex = require('knex')(config.db);
 
-const getRecords = () =>
+const getRecords = () => 
 	knex('torrents')
 		.where({ searchUpdate: false })
 		.limit(config.search.limit);
@@ -66,30 +66,25 @@ const update = async (records) => {
 		console.log(errors);
 	}
 
-	await knex('torrents')
+	const count = await knex('torrents')
 		.update({
 			searchUpdate: true,
 			searchUpdated: new Date(),
 		})
 		.whereIn('infohash', records.map(({ infohash }) => infohash));
+	console.log(utils.timeStamp() + 'Updated ' + count + ' torrents in elasticsearch index');
 };
 
 const loader = async () => {
-	const records = await getRecords();
-
-	if (records.length > 0) {
-		try {
+	try {
+		const records = await getRecords();
+		if (records.length > 0) {
 			await update(records);
-		} catch (error) {
-			if (error instanceof knexTimeoutError) {
-				console.log(utils.timeStamp() + 'knex database connection time out');
-			} else {
-				console.error(utils.timeStamp() + 'Unexpected error:');
-				console.error(error);
-			}
 		}
+	} catch (error) {
+		console.error(utils.timeStamp() + 'Unexpected error:');
+		console.error(error);
 	}
-
 	setTimeout(() => loader(knex), config.search.frequency * 1000);
 };
 

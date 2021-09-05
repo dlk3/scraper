@@ -15,17 +15,24 @@ const getCount = async () => {
 		const [count3] = await knex('torrents')
 			.count('infohash')
 			.whereNull('searchUpdated');
-
+                if (config.debug) {
+			const [count4] = await knex('torrents')
+                        	.count('infohash')
+	                        .where('updated', '<', knex.raw('NOW() - INTERVAL ? DAY', [config.stale.days]))
+        	                .andWhere(function() {
+                	                this.whereNotNull('updated')
+                        	});
+		}
 		console.log(utils.timeStamp() + `Total Torrents: ${count['count(`infohash`)']}`);
 		console.log(utils.timeStamp() + `Torrents without Tracker: ${count2['count(`infohash`)']}`);
-		console.log(utils.timeStamp() + `Torrents not in Search: ${count3['count(`infohash`)']}`);
-	} catch (error) {
-		if (error instanceof knexTimeoutError) {
-			console.log(utils.timeStamp() + 'knex database connection time out');
-		} else {
-			console.error(utils.timeStamp() + 'Unexpected error:');
-			console.error(error);
+		console.log(utils.timeStamp() + `Torrents not in elasticsearch index: ${count3['count(`infohash`)']}`);
+                if (config.debug) {
+                	console.log(utils.timeStamp() + `Stale Torrents: ${count4['count(`infohash`)']}`);
 		}
+
+	} catch (error) {
+		console.error(utils.timeStamp() + 'Unexpected error:');
+		console.error(error);
 	}
 
 	setTimeout(() => getCount(), 10000);
