@@ -1,0 +1,107 @@
+#!/usr/bin/env python
+
+#  Copyright (C) 2021  David King <dave@daveking.com>
+#
+#  This Source Code Form is subject to the terms of the Mozilla Public License,
+#  v. 2.0.  If a copy of the MPL was not distbuted with this file, You can
+#  obtain one at https://mozilla.org/MPL/2.0/.
+
+#  Compare the torrents in the SQL DB with those in the elasticsearch index.
+#  Reconcile any differences.
+
+#  Configuration settings
+cfg = {
+	"dbhost": "localhost",
+	"dbname": "alphareign",
+	"dbtable": "torrents",
+	"dbuser": "alphareign",
+	"dbpass": "XgSQ3NVLoBFxKJNX7i4x",
+
+	"es_index": "torrents",
+	"es_doctype": "hash",
+}
+
+import MySQLdb
+from elasticsearch import Elasticsearch
+from elasticsearch_dsl import Search
+import datetime
+import subprocess
+import numpy
+from optparse import OptionParser
+
+#  A function to write output messages to sysout
+def log(message):
+	if not opts.quiet:
+		timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		print("{}: {}".format(timestamp, message))
+
+try:
+	#  Parse the command line
+	usage = '\033[00;01m%prog\033[00m [-q|quiet] [-d|--dry-run]'
+	description = 'Synchronize the alphareign mysql and elasticsearch databases.'
+	parser = OptionParser(usage=usage, description=description)
+	parser.add_option('-q', '--quiet', action='store_true', dest='quiet', default=False, help='do not print progress messages, only print a message if there is an error.')
+	parser.add_option('-d', '--dry-run', action='store_true', dest='dry_run', default=False, help='only print messages about mismatched database records, do not make the changes necessary to fix them.')
+	(opts, args) = parser.parse_args()
+	
+	#  Stop alphareign apps
+	proc = subprocess.run('pm2 stop scraper loader cleaner', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	log(proc.stdout.decode('utf8'))
+
+	#  Connect to mysql db
+	conn = MySQLdb.connect(host = cfg['dbhost'], user = cfg['dbuser'], passwd = cfg['dbpass'], db = cfg['dbname'])
+	cursor = conn.cursor()
+	
+	#  Get list of all of the hashes in the mysql db that are
+	#  marked as having been loaded into the elasticsearch index
+	log("Fetching list of indexed infohashes from mysql db")
+	sql = "SELECT `infohash` FROM `{}` WHERE `searchUpdate` = 1 ORDER BY `infohash`".format(cfg['dbtable'])
+	cursor.execute(sql)
+	sql_hashlist = [h[0] for h in cursor.fetchall()]
+	log("returned {} rows".format(len(sql_hashlist)))
+
+	#  Define an elasticsearch client
+	es = Elasticsearch()
+
+	#  Get list of all the hashes in the elasticsearch index
+	#  (loader.js sets the doc _id value to be the infohash)
+	log("Fetching list of all infohashes from elasticsearch index")
+	s = Search(using=es, index=cfg['es_index'], doc_type=cfg['es_doctype'])
+	s = s.source(False)
+	es_hashlist = [doc.meta.id for doc in s.scan()]
+	log("returned {} documents".format(len(es_hashlist)))
+
+	#  If there's an infohash in mysql that isn't in the
+        #  elasticsearch index, mark it as not loaded in mysql
+	log("Checking mysql infohashes")
+	result = numpy.isin(sql_hashlist, es_hashlist)
+	for idx in numpy.where(result == False)[0]:
+		if opts.dry_run:
+			log("{} is not in elasticsearch (this is a dry run)".format(sql_hashlist[idx]))
+		else:
+			sql = "UPDATE `{}` SET `searchUpdate` = 0, `searchUpdated` = NULL WHERE `infohash` = \"{}\"".format(cfg['dbtable'], sql_hashlist[idx])
+			cursor.execute(sql)
+			log("{} is not in elasticsearch, marked it for reloading".format(sql_hashlist[idx]))
+	if not opts.dry_run:
+		conn.commit()
+	conn.close()
+		
+	#  If there's an infohash in the elasticsearch index that isn't 
+	#  in mysql delete it from elasticsearch
+	log("Checking elasticsearch infohashes")
+	result = numpy.isin(es_hashlist, sql_hashlist)
+	for idx in numpy.where(result == False)[0]:
+		if opts.dry_run:
+			log("{} is not in mysql (this is a dry run)".format(es_hashlist[idx]))
+		else:
+			es.delete(index=cfg['es_index'], id=es_hashlist[idx]))
+			log("{} is not in mysql, deleted it from elasticsearch".format(es_hashlist[idx]))
+
+	#  Restart alphareign apps
+	proc = subprocess.run('pm2 start scraper loader cleaner', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	log(proc.stdout.decode('utf8'))
+	
+except Exception as e:
+	opts.quiet = False
+	log("exiting on unexpected exception:\n{}".format(e))
+	exit(1)
