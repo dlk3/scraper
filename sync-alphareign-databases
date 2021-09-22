@@ -15,7 +15,7 @@ cfg = {
 	"dbname": "alphareign",
 	"dbtable": "torrents",
 	"dbuser": "alphareign",
-	"dbpass": "XgSQ3NVLoBFxKJNX7i4x",
+	"dbpass": "",
 
 	"es_index": "torrents",
 	"es_doctype": "hash",
