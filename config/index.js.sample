@@ -23,9 +23,9 @@ const config = {
 		client: 'mysql',
 		connection: {
 			database: 'alphareign',
-			host: 'scraper-mariadb',
-			password: 'XgSQ3NVLoBFxKJNX7i4x',
-			user: 'alphareign',
+			host: '127.0.0.1',
+			password: '',
+			user: '',
 		},
 		// dlk added to debug connection exception
 		/*
@@ -39,7 +39,7 @@ const config = {
 	},
 	debug: false,
 	elasticsearch: {
-		host: 'scraper-elasticsearch',
+		host: '127.0.0.1',
 		port: 9200,
 	},
 	filters,
@@ -49,11 +49,6 @@ const config = {
 		frequency: 10,
 		// Amount of torrents to update in elasticsearch at once
 		limit: 1000,
-	},
-	stale: {
-		// Delete outdated torrents after this many days
-		days: 90,
-		limit: 100,
 	},
 	tags,
 	tracker: {
@@ -67,6 +62,11 @@ const config = {
 		host: 'udp://tracker.opentrackr.org:1337/announce',
 		limit: 75,
 	},
+	stale: {
+		// Delete outdated torrents after this many days 
+		days: 90,
+		limit: 100
+	}
 };
 
 module.exports = config;
