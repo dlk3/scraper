@@ -1,0 +1,191 @@
+#!/usr/bin/env python
+
+#  Test connectivity to a udp bittorrent tracker url.
+#  Hacked together from bits stolen from https://github.com/CorralPeltzer/newTrackon/tree/master/newTrackon
+
+import random
+import socket
+import struct
+import subprocess
+from logging import getLogger
+from os import urandom
+from time import time
+from urllib.parse import urlparse, urlencode
+
+def decode_binary_peers_list(buf, offset, ip_family):
+    peers = []
+    x = 0
+    while offset != len(buf):
+        if ip_family == socket.AF_INET:
+            peer_length = 6
+        else:
+            peer_length = 18
+        binary_response = memoryview(buf)
+        peers.append(dict())
+        if len(buf) < offset + peer_length:
+            return peers
+        ip_address = bytes(binary_response[offset : offset + peer_length - 2])
+        peers[x]["IP"] = socket.inet_ntop(ip_family, ip_address)
+        offset += peer_length - 2
+        peers[x]["port"] = struct.unpack_from("!H", buf, offset)[0]
+        offset += 2
+        x += 1
+    return peers
+    
+def announce_udp(udp_url, thash=urandom(20)):
+    parsed_tracker = urlparse(udp_url)
+    print(f"{udp_url} Scraping UDP")
+    sock = None
+    ip = None
+    getaddr_responses = []
+    try:
+        for res in socket.getaddrinfo(
+            parsed_tracker.hostname, parsed_tracker.port, 0, socket.SOCK_DGRAM
+        ):
+            getaddr_responses.append(res)
+    except OSError as err:
+        raise RuntimeError("UDP error: " + str(err))
+
+    for res in getaddr_responses:
+        af, socktype, proto, _, sa = res
+        ip = sa[0]
+        try:
+            sock = socket.socket(af, socktype, proto)
+            sock.settimeout(10)
+        except OSError:
+            sock = None
+            continue
+        try:
+            sock.connect(sa)
+        except OSError:
+            sock.close()
+            sock = None
+            continue
+        break
+    if sock is None:
+        raise RuntimeError("UDP connection error")
+
+    # Get connection ID
+    req, transaction_id = udp_create_binary_connection_request()
+    try:
+        sock.sendall(req)
+        buf = sock.recv(2048)
+    except ConnectionRefusedError:
+        raise RuntimeError("UDP connection failed")
+    except socket.timeout:
+        raise RuntimeError("UDP timeout")
+    except OSError as err:
+        raise RuntimeError("UDP error: " + str(err))
+
+    connection_id = udp_parse_connection_response(buf, transaction_id)
+    # Scrape away
+    req, transaction_id = udp_create_announce_request(connection_id, thash)
+    try:
+        sock.sendall(req)
+        buf = sock.recv(2048)
+    except ConnectionRefusedError:
+        raise RuntimeError("UDP connection failed")
+    except socket.timeout:
+        raise RuntimeError("UDP timeout")
+    except OSError as err:
+        raise RuntimeError("UDP error: " + str(err))
+    ip_family = sock.family
+    sock.close()
+    parsed_response, raw_response = udp_parse_announce_response(
+        buf, transaction_id, ip_family
+    )
+    print(f"{udp_url} response: {parsed_response}")
+    return parsed_response, ip
+
+def udp_create_binary_connection_request():
+    connection_id = 0x41727101980  # default connection id
+    action = 0x0  # action (0 = give me a new connection id)
+    transaction_id = udp_get_transaction_id()
+    buf = struct.pack("!q", connection_id)  # first 8 bytes is connection id
+    buf += struct.pack("!i", action)  # next 4 bytes is action
+    buf += struct.pack("!i", transaction_id)  # next 4 bytes is transaction id
+    return buf, transaction_id
+
+
+def udp_parse_connection_response(buf, sent_transaction_id):
+    if len(buf) < 16:
+        raise RuntimeError("Wrong response length getting connection id: %s" % len(buf))
+    action = struct.unpack_from("!i", buf)[0]  # first 4 bytes is action
+
+    res_transaction_id = struct.unpack_from("!i", buf, 4)[
+        0
+    ]  # next 4 bytes is transaction id
+    if res_transaction_id != sent_transaction_id:
+        raise RuntimeError(
+            "Transaction ID doesn't match in connection response. Expected %s, got %s"
+            % (sent_transaction_id, res_transaction_id)
+        )
+
+    if action == 0x0:
+        connection_id = struct.unpack_from("!q", buf, 8)[
+            0
+        ]  # unpack 8 bytes from byte 8, should be the connection_id
+        return connection_id
+    elif action == 0x3:
+        error = struct.unpack_from("!s", buf, 8)
+        raise RuntimeError(
+            "Error while trying to get a connection response: %s" % error
+        )
+
+
+def udp_create_announce_request(connection_id, thash):
+    action = 0x1  # action (1 = announce)
+    transaction_id = udp_get_transaction_id()
+    buf = struct.pack("!q", connection_id)  # first 8 bytes is connection id
+    buf += struct.pack("!i", action)  # next 4 bytes is action
+    buf += struct.pack("!i", transaction_id)  # followed by 4 byte transaction id
+    buf += struct.pack("!20s", thash)  # hash
+    buf += struct.pack("!20s", thash)  # peer id, should be random
+    buf += struct.pack("!q", 0x0)  # number of bytes downloaded
+    buf += struct.pack("!q", 0x0)  # number of bytes left
+    buf += struct.pack("!q", 0x0)  # number of bytes uploaded
+    buf += struct.pack("!i", 0x2)  # event 0 denotes start of downloading
+    buf += struct.pack(
+        "!i", 0x0
+    )  # IP address set to 0. Response received to the sender of this packet
+    key = udp_get_transaction_id()  # Unique key randomized by client
+    buf += struct.pack("!i", key)
+    buf += struct.pack("!i", -1)  # Number of peers required. Set to -1 for default
+    buf += struct.pack("!H", 0x76FD)  # port on which response will be sent
+    return buf, transaction_id
+
+
+def udp_parse_announce_response(buf, sent_transaction_id, ip_family):
+    if len(buf) < 20:
+        raise RuntimeError("Wrong response length while announcing: %s" % len(buf))
+    action = struct.unpack_from("!i", buf)[0]  # first 4 bytes is action
+    res_transaction_id = struct.unpack_from("!i", buf, 4)[
+        0
+    ]  # next 4 bytes is transaction id
+    if res_transaction_id != sent_transaction_id:
+        raise RuntimeError(
+            "Transaction ID doesnt match in announce response! Expected %s, got %s"
+            % (sent_transaction_id, res_transaction_id)
+        )
+    if action == 0x1:
+        ret = dict()
+        offset = 8  # next 4 bytes after action is transaction_id, so data doesnt start till byte 8
+        ret["interval"] = struct.unpack_from("!i", buf, offset)[0]
+        offset += 4
+        ret["leechers"] = struct.unpack_from("!i", buf, offset)[0]
+        offset += 4
+        ret["seeds"] = struct.unpack_from("!i", buf, offset)[0]
+        offset += 4
+        ret["peers"] = decode_binary_peers_list(buf, offset, ip_family)
+        return ret, buf.hex()
+    else:
+        # an error occured, try and extract the error string
+        error = struct.unpack_from("!s", buf, 8)
+        raise RuntimeError("Error while annoucing: %s" % error)
+
+
+def udp_get_transaction_id():
+    return int(random.randrange(0, 255))
+
+#announce_udp('udp://tracker.opentrackr.org:1337/announce')
+announce_udp('udp://tr4ck3r.duckdns.org:6969/announce')
