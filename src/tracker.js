@@ -23,7 +23,13 @@ const scrape = async (knex, records) => {
 	};
 
 	const results = await new Promise((resolve, reject) => {
-		Client.scrape(options, (error, data) => (error ? reject(error) : resolve(data)));
+		try {
+			Client.scrape(options, (error, data) => (error ? reject(error) : resolve(data)));
+		} catch (error) {
+			console.error(`${utils.timeStamp()}Error while querying tracker stats:`);
+			console.error(error);
+			// Do nothing
+		}
 	});
 
 	if (results.infoHash) {
@@ -38,7 +44,7 @@ const scrape = async (knex, records) => {
 };
 
 const getRecords = async (knex) => {
-        try {
+	try {
 		const newRecords = await knex('torrents')
 			.select('infohash')
 			.whereNull('trackerUpdated')
@@ -52,7 +58,7 @@ const getRecords = async (knex) => {
 
 		return [...newRecords, ...outdatedRecords];
 	} catch (error) {
-		console.error(utils.timeStamp() + 'Unexpected error:');
+		console.error(`${utils.timeStamp()}Unexpected error:`);
 		console.error(error);
 		return [];
 	}
@@ -65,7 +71,7 @@ const tracker = async (knex) => {
 		try {
 			await scrape(knex, records);
 		} catch (error) {
-			console.error(utils.timeStamp() + 'Unexpected error:');
+			console.error(`${utils.timeStamp()}Unexpected error:`);
 			console.error(error);
 			// Do nothing
 		}
