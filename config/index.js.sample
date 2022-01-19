@@ -26,16 +26,7 @@ const config = {
 			host: '127.0.0.1',
 			password: '',
 			user: '',
-		},
-		// dlk added to debug connection exception
-		/*
-		pool: {
-			min: 1,
-			max: 20,
-			acquireTimeoutMillis: 60000
 		}
-		asyncStackTraces: true
-		*/
 	},
 	debug: false,
 	elasticsearch: {
@@ -64,7 +55,7 @@ const config = {
 	},
 	stale: {
 		// Delete outdated torrents after this many days 
-		days: 90,
+		days: 60,
 		limit: 100
 	}
 };
